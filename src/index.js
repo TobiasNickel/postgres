@@ -206,21 +206,19 @@ function Postgres(a, b) {
       sql.savepoint = savepoint
       let errored
       name && await sql`savepoint ${ sql(name) }`
-      try {
-        const result = await new Promise((resolve, reject) => {
-          errored = reject
-          const x = fn(sql)
-          Promise.resolve(Array.isArray(x) ? Promise.all(x) : x).then(resolve, reject)
-        })
-        !name && await sql`commit`
-        return result
-      } catch (e) {
-        await (name
-          ? sql`rollback to ${ sql(name) }`
-          : sql`rollback`
-        )
-        throw e
-      }
+      
+      return await new Promise((resolve, reject) => {
+        errored = reject
+        const x = fn(sql)
+        Promise.resolve(
+          Array.isArray(x) 
+            ? Promise.all([...x, (!name ? sql`commit` : null)]).then(r=>{
+              r.pop(); // pop true or the commit result
+              return r;
+            })
+            : Promise.all([x, (!name ? sql`commit` : null)]).then(([r])=>r)
+        ).then(resolve, reject)
+      })
 
       function savepoint(name, fn) {
         if (name && Array.isArray(name.raw))
